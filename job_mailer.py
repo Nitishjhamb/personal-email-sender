@@ -81,7 +81,7 @@ def main():
     sender = "your_email@gmail.com"
     resume_path = "resume.pdf"
     sent_log_file = "sent_log.txt"
-    daily_limit = 100
+    daily_limit = 50
 
     # Subjects
     subjects = [
@@ -95,8 +95,7 @@ def main():
         "Application for Entry-Level Cloud Position",
         "Cloud Fresher – Career Opportunity Inquiry",
         "Interested in Cloud Computing Roles",
-        "Cloud Fresher Job Opportunity Application",
-        "Eager to Join as a Cloud Computing Fresher"
+        "Cloud Fresher Job Opportunity Application"
     ]
 
     # Organized body templates as a list of dictionaries
@@ -157,7 +156,7 @@ def main():
 
     batch = service.new_batch_http_request()
     count = 0
-    batch_size = 10
+    batch_size = 5  # Send 5 emails per batch
 
     for email in today_batch:
         if count >= daily_limit:
@@ -179,11 +178,13 @@ def main():
         if count % batch_size == 0 or count == len(today_batch):
             try:
                 batch.execute()
-                print(f"📬 Processed batch of {min(batch_size, count)} emails")
+                print(f"📬 Processed batch of {min(batch_size, count % batch_size or batch_size)} emails")
+                if count < daily_limit:  # Pause only if more emails remain
+                    print("⏸️ Pausing for 1 minute...")
+                    time.sleep(60)  # 1-minute pause after every 5 emails
             except Exception as e:
                 print(f"❌ Batch failed: {str(e)}")
-            time.sleep(1)  # Brief pause between batches
-            batch = service.new_batch_http_request()
+            batch = service.new_batch_http_request()  # Reset batch
 
     print("🎉 Finished today's batch.")
 
