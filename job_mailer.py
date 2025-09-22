@@ -9,7 +9,6 @@ from email import encoders
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.http import BatchHttpRequest
 from google.auth.transport.requests import Request
 
 # Gmail API scope
@@ -45,16 +44,19 @@ def create_message_with_attachment(sender, to, subject, body_text, file_path):
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     return {'raw': raw}
 
-def send_email_callback(request_id, response, exception, email, sent_log_file):
-    if exception is not None:
-        error_text = str(exception)
-        print(f"❌ Failed to send to {email}: {error_text}")
-        with open("bounced_emails.txt", "a") as bfile:
-            bfile.write(f"{email} | {error_text}\n")
-    else:
+def send_email(service, user_id, message, email, sent_log_file):
+    try:
+        service.users().messages().send(userId=user_id, body=message).execute()
         print(f"✅ Sent to {email}")
         with open(sent_log_file, "a") as log:
             log.write(email + "\n")
+        return True
+    except Exception as e:
+        error_text = str(e)
+        print(f"❌ Failed to send to {email}: {error_text}")
+        with open("bounced_emails.txt", "a") as bfile:
+            bfile.write(f"{email} | {error_text}\n")
+        return False
 
 def extract_name(email):
     local_part = email.split("@")[0]
@@ -154,10 +156,7 @@ def main():
 
     print(f"📩 Sending {len(today_batch)} emails today...")
 
-    batch = service.new_batch_http_request()
     count = 0
-    batch_size = 5  # Send 5 emails per batch
-
     for email in today_batch:
         if count >= daily_limit:
             print("⏹️ Daily limit reached. Stopping for today.")
@@ -169,22 +168,12 @@ def main():
         body = body_template.format(name=name)
         msg = create_message_with_attachment(sender, email, subject, body, resume_path)
 
-        batch.add(
-            service.users().messages().send(userId="me", body=msg),
-            callback=lambda rid, resp, exc, e=email, f=sent_log_file: send_email_callback(rid, resp, exc, e, f)
-        )
-        count += 1
-
-        if count % batch_size == 0 or count == len(today_batch):
-            try:
-                batch.execute()
-                print(f"📬 Processed batch of {min(batch_size, count % batch_size or batch_size)} emails")
-                if count < daily_limit:  # Pause only if more emails remain
-                    print("⏸️ Pausing for 1 minute...")
-                    time.sleep(60)  # 1-minute pause after every 5 emails
-            except Exception as e:
-                print(f"❌ Batch failed: {str(e)}")
-            batch = service.new_batch_http_request()  # Reset batch
+        # Send individual email
+        if send_email(service, "me", msg, email, sent_log_file):
+            count += 1
+            if count < daily_limit:  # Pause only if more emails remain
+                print("⏸️ Pausing for 30 seconds...")
+                time.sleep(30)  # 30-second pause after each email
 
     print("🎉 Finished today's batch.")
 
